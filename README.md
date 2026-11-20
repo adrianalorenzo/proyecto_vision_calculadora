@@ -1,4 +1,4 @@
-# AirMath ✍️🧮
+# AirMath 
 
 **Write numbers in the air with your finger and let the camera do the maths.**
 
@@ -12,7 +12,7 @@ AirMath is a real-time computer vision system that works with the laptop webcam:
 
 The camera is calibrated offline with a chessboard pattern, and every frame is undistorted before processing. The FPS are always shown on screen.
 
-> 🚧 Work in progress (November 2026).
+> Work in progress (November 2026).
 
 ## Repository structure
 
