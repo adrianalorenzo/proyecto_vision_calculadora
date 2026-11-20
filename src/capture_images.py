@@ -1,4 +1,5 @@
 import os
+import glob
 import cv2
 
 camera_index = 0                  # built-in webcam (change to 1 if it does not open)
@@ -17,7 +18,7 @@ cap = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
 
-n_saved = 0
+n_saved = len(glob.glob(os.path.join(output_folder, "*.png")))   # continue numbering, never overwrite
 print("SPACE: save image | q: quit")
 
 while True:
