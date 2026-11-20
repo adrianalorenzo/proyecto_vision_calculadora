@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Videos and large files
+*.mp4
+*.avi
+*.mov
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
