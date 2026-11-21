@@ -1,4 +1,5 @@
 import os
+import unicodedata
 import cv2
 import numpy as np
 import ui
@@ -106,7 +107,10 @@ def draw_screen(canvas: np.ndarray, digit: int, done: int, total: int, message: 
 
 
 if __name__ == "__main__":
-    name = input("Your name: ").strip().lower().replace(" ", "_") or "anon"
+    # Name without accents or spaces ("Sofía Sánchez" -> "sofia_sanchez"): on Windows, cv2.imwrite
+    # breaks file names with accents, and then next_path would not find them and would overwrite them
+    name = input("Your name: ").strip().lower().replace(" ", "_")
+    name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode() or "anon"
     sequence = make_sequence(samples_per_digit)
 
     canvas = np.zeros((canvas_height, canvas_width), dtype=np.uint8)   # strokes: white (255) on black (0)
