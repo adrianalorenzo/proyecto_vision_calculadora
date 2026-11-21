@@ -66,9 +66,11 @@ prev_pos = None
 print("Hold the left button: draw | SPACE: read and save | c: clear | q: quit")
 
 while True:
-    # 1. Draw: a line from the previous position to the current one while the button is held
+    # 1. Draw: a line from the previous position to the current one while the button is held.
+    #    As in main.py, only if both positions are inside the same box (strokes never cross into another box)
     if mouse["down"] and mouse["pos"] is not None:
-        if prev_pos is not None:
+        box = ui.get_box(mouse["pos"], ui.calculator_boxes)
+        if prev_pos is not None and box is not None and box == ui.get_box(prev_pos, ui.calculator_boxes):
             cv2.line(canvas, prev_pos, mouse["pos"], 255, stroke_thickness)
         prev_pos = mouse["pos"]
     else:
