@@ -19,6 +19,7 @@ versus_target = 5               # points to win a Versus game
 clear_after = 4.0               # [s] the Calculator result is erased after this time
 stroke_thickness = 12           # strokes are drawn white with this thickness on the canvas
 hold_time = 0.5                 # [s] the pinch must be held this time over a button to press it
+test_folder = "../output/air_tests"   # every box read is saved here (crop + log.csv) to tune digits.py
 
 # ---------------- Modules of Adriana and Sofia ----------------
 # While a module does not exist yet, a simple stand-in is used so main.py always runs.
@@ -99,6 +100,16 @@ def crop_box(canvas: np.array, rect: tuple) -> np.array:
 def clear_box(canvas: np.array, rect: tuple):
     x1, y1, x2, y2 = rect
     canvas[y1:y2, x1:x2] = 0
+
+
+def save_test(mode: str, crops: dict, read: str, expected=""):
+    # Saves the crops of the boxes that were read and one line in log.csv: time, mode, expected, read
+    os.makedirs(test_folder, exist_ok=True)
+    stamp = time.strftime("%H%M%S") + f"_{int(time.time() * 1000) % 1000:03d}"
+    for name, crop in crops.items():
+        cv2.imwrite(os.path.join(test_folder, f"{stamp}_{mode}_{name}.png"), crop)
+    with open(os.path.join(test_folder, "log.csv"), "a") as f:
+        f.write(f"{stamp},{mode},{expected},{read}\n")
 
 
 def screen_elements(state: str):
@@ -251,6 +262,7 @@ while True:
                 op = predict_symbol(crop_box(canvas, ui.calculator_boxes["op"]))
                 num2 = predict_number(crop_box(canvas, ui.calculator_boxes["num2"]))
                 read_text = f"{num1} {op} {num2}"
+                save_test("calc", {name: crop_box(canvas, rect) for name, rect in ui.calculator_boxes.items()}, read_text)
                 result_text = str(evaluate(read_text))
                 result_time = now
                 if "?" in read_text or result_text in ("?", "Error"):
@@ -270,6 +282,7 @@ while True:
             rect = ui.mental_math_boxes["answer"]
             if pressed == "submit":
                 answer = predict_number(crop_box(canvas, rect))
+                save_test("mental_math", {"answer": crop_box(canvas, rect)}, answer, solution)
                 correct = answer == str(solution)
                 history.append({"problem": problem_text, "solution": solution, "answer": answer,
                                 "correct": correct, "time": now})
@@ -309,6 +322,7 @@ while True:
                     continue
                 rect = ui.versus_boxes[box_name]
                 answer = predict_number(crop_box(canvas, rect))
+                save_test("versus", {box_name: crop_box(canvas, rect)}, answer, solution)
                 if answer == str(solution):
                     points[player] += 1
                     feedback = f"Point for Player {player + 1}!"
