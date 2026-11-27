@@ -126,7 +126,7 @@ def pretty(text: str) -> str:
 
 # ---------------- Frame, flash and window ----------------
 flash_state = {"color": None, "start": 0.0}
-trail = []                                              # last positions of the fingertip
+trails = [[], []]                                       # last positions of the fingertip of each player
 
 
 def new_frame(display: np.array, dim: float = 1.0) -> np.array:
@@ -290,9 +290,11 @@ def draw_button(screen: np.array, button: dict, pen=None, progress: float = 0.0)
 
 
 def draw_buttons(screen: np.array, buttons: list, pen=None, hold=None):
-    # hold = (button name, progress) of the button being pressed
+    # hold = {button name: progress} of the buttons being pressed (or one tuple (name, progress))
+    if isinstance(hold, tuple):
+        hold = {hold[0]: hold[1]}
     for button in buttons:
-        progress = hold[1] if hold is not None and hold[0] == button["name"] else 0.0
+        progress = hold.get(button["name"], 0.0) if hold else 0.0
         draw_button(screen, button, pen, progress)
 
 
@@ -323,8 +325,9 @@ def draw_fps(screen: np.array, fps: float):
     draw_text(screen, f"{fps:.0f} FPS", (34, height - 22), 12, white)
 
 
-def draw_cursor(screen: np.array, pen, gesture):
+def draw_cursor(screen: np.array, pen, gesture, player: int = 0):
     # Fingertip with a short fading trail. Yellow = writing, amber ring = pinch (click), white = moving
+    trail = trails[player]
     now = time.time()
     if pen is not None:
         trail.append((pen[0], pen[1], now))
@@ -352,10 +355,10 @@ def draw_corners(screen: np.array, rect: tuple, color: tuple, length: int = 16):
         draw_line(screen, (x, y), (x, y + dy * length), color, 2)
 
 
-def draw_hand_box(screen: np.array, bbox):
-    # Bounding box of the hand given by the tracker
+def draw_hand_box(screen: np.array, bbox, player=None):
+    # Bounding box of the hand given by the tracker (in Versus, with the color of the player)
     if bbox is not None:
-        draw_corners(screen, bbox, sky)
+        draw_corners(screen, bbox, {0: player1, 1: player2}.get(player, sky))
 
 
 def draw_recording(screen: np.array):

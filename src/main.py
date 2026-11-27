@@ -28,7 +28,7 @@ test_folder = "../output/air_tests"   # every box read is saved here (crop + log
 try:
     import tracker
     hands = tracker.create_hands()
-    kalman = tracker.create_kalman()
+    kalmans = [tracker.create_kalman(), tracker.create_kalman()]   # one per player (Versus)
     use_mouse = False
 except ImportError:
     print("tracker.py not found: the mouse is used as the pen (hold the left button)")
@@ -149,10 +149,11 @@ if use_mouse:
 state = "LOCKED"
 decoder = security.new_decoder_state()
 canvas = np.zeros((ui.height, ui.width), dtype=np.uint8)   # strokes: white (255) on black (0)
-prev_pen, prev_gesture = None, None
-hold_name, hold_start, hold_done = None, 0.0, False    # button being pressed with the pinch
-last_press = 0.0
-pending = []                                            # last segments of the stroke, not yet in the canvas
+# Memory of every player (index 0 = Player 1, 1 = Player 2; the modes with one player only use 0)
+prev_pen, prev_gesture = [None, None], [None, None]
+hold_name, hold_start, hold_done = [None, None], [0.0, 0.0], [False, False]   # button being pressed with the pinch
+pending = [[], []]                                      # last segments of the stroke, not yet in the canvas
+last_press = [0.0, 0.0]                                 # time of the last button press of each player
 prev_time, fps = time.time(), 0.0
 writer = None
 
@@ -206,44 +207,71 @@ while True:
     else:
         buttons, boxes = screen_elements(state)
 
-        # 3. Tracker: pen position, gesture and bounding box of the hand
-        bbox = None
+        # 3. Tracker: one pointer per hand = (player, pen, gesture, bbox).
+        # In Versus there can be two hands: the one on the left half is Player 1, on the right Player 2
+        pointers = []
         if use_mouse:
             pen, gesture = mouse_pen(buttons)
+            if pen is not None:
+                player = 1 if state == "VERSUS" and pen[0] >= ui.width / 2 else 0
+                pointers.append((player, pen, gesture, None))
+        elif state == "VERSUS":
+            for landmarks in tracker.get_all_landmarks(display, hands):
+                player = 0 if landmarks[0][0] < ui.width / 2 else 1
+                if any(p[0] == player for p in pointers):
+                    continue                              # two hands on the same half: only the first one
+                pointers.append((player, tracker.get_pen(landmarks, kalmans[player], player),
+                                 tracker.get_gesture(landmarks, player), tracker.get_bbox(landmarks)))
         else:
             landmarks = tracker.get_landmarks(display, hands)
-            if landmarks is None:
-                pen, gesture = None, None
+            if landmarks is not None:
+                pointers.append((0, tracker.get_pen(landmarks, kalmans[0]), tracker.get_gesture(landmarks),
+                                 tracker.get_bbox(landmarks)))
+
+        pressed, hold = None, {}
+        for player, pen, gesture, bbox in pointers:
+            # In Versus each player only writes in her box and only presses her buttons (and Menu)
+            if state == "VERSUS":
+                my_boxes = {k: v for k, v in boxes.items() if k == f"answer{player + 1}"}
+                my_buttons = [b for b in buttons if b["name"] in (f"submit{player + 1}", f"clear{player + 1}", "menu")]
             else:
-                pen = tracker.get_pen(landmarks, kalman)
-                gesture = tracker.get_gesture(landmarks)
-                bbox = tracker.get_bbox(landmarks)
+                my_boxes, my_buttons = boxes, buttons
 
-        # 4. Writing: only with the index gesture and inside a box.
-        # The gesture changes some frames after the hand closes, so the last segments are kept
-        # on hold (pending) and thrown away if the index stops: this removes the tails of the strokes
-        box = ui.get_box(pen, boxes)
-        if gesture == "index" and prev_gesture == "index" and box is not None and box == ui.get_box(prev_pen, boxes):
-            pending.append(((int(prev_pen[0]), int(prev_pen[1])), (int(pen[0]), int(pen[1]))))
-            if len(pending) > (0 if use_mouse else stroke_delay):     # the mouse has no tails
-                p1, p2 = pending.pop(0)
-                cv2.line(canvas, p1, p2, 255, stroke_thickness)
-        elif gesture != "index":
-            pending.clear()
+            # 4. Writing: only with the index gesture and inside a box.
+            # The gesture changes some frames after the hand closes, so the last segments are kept
+            # on hold (pending) and thrown away if the index stops: this removes the tails of the strokes
+            box = ui.get_box(pen, my_boxes)
+            if gesture == "index" and prev_gesture[player] == "index" and box is not None \
+                    and box == ui.get_box(prev_pen[player], my_boxes):
+                pending[player].append(((int(prev_pen[player][0]), int(prev_pen[player][1])), (int(pen[0]), int(pen[1]))))
+                if len(pending[player]) > (0 if use_mouse else stroke_delay):     # the mouse has no tails
+                    p1, p2 = pending[player].pop(0)
+                    cv2.line(canvas, p1, p2, 255, stroke_thickness)
+            elif gesture != "index":
+                pending[player].clear()
+
+            # 5. Click: the pinch is held over a button for hold_time (the button fills up)
+            over = ui.get_button(pen, my_buttons) if gesture == "pinch" else None
+            if over != hold_name[player]:
+                hold_name[player], hold_start[player], hold_done[player] = over, now, False
+            if hold_name[player] is not None and not hold_done[player]:
+                hold[hold_name[player]] = (now - hold_start[player]) / hold_time
+                if hold[hold_name[player]] >= 1 and now - last_press[player] > press_cooldown and pressed is None:
+                    pressed, hold_done[player], last_press[player] = hold_name[player], True, now
+                    sounds.play("click")
+            prev_pen[player], prev_gesture[player] = pen, gesture
+
+        # Players without a hand in this frame: forget their stroke and button
+        for player in (0, 1):
+            if not any(p[0] == player for p in pointers):
+                prev_pen[player], prev_gesture[player], hold_name[player] = None, None, None
+                pending[player].clear()
+
         shown_canvas = canvas.copy()                     # what is drawn on the screen (with the pending segments)
-        for p1, p2 in pending:
-            cv2.line(shown_canvas, p1, p2, 255, stroke_thickness)
-
-        # 5. Click: the pinch is held over a button for hold_time (the button fills up)
-        pressed, hold = None, None
-        over = ui.get_button(pen, buttons) if gesture == "pinch" else None
-        if over != hold_name:
-            hold_name, hold_start, hold_done = over, now, False
-        if hold_name is not None and not hold_done:
-            hold = (hold_name, (now - hold_start) / hold_time)
-            if hold[1] >= 1 and now - last_press > press_cooldown:
-                pressed, hold_done, last_press = hold_name, True, now
-                sounds.play("click")
+        for segments in pending:
+            for p1, p2 in segments:
+                cv2.line(shown_canvas, p1, p2, 255, stroke_thickness)
+        pen = pointers[0][1] if pointers else None       # for the hover of the buttons
 
         # 6. State machine
         if pressed == "menu" or pressed == "back":
@@ -367,9 +395,9 @@ while True:
             ui.draw_versus(screen, shown_canvas, problem_text, points, versus_target, feedback, pen, hold)
         elif state == "RESULTS":
             ui.draw_results(screen, results_title, results_lines, pen, hold)
-        ui.draw_hand_box(screen, bbox)
-        ui.draw_cursor(screen, pen, gesture)
-        prev_pen, prev_gesture = pen, gesture
+        for player, p, g, bbox in pointers:
+            ui.draw_hand_box(screen, bbox, player if state == "VERSUS" else None)
+            ui.draw_cursor(screen, p, g, player)
 
     # 8. FPS, glow, recording and window
     fps = 0.9 * fps + 0.1 * (1.0 / max(now - prev_time, 1e-6))
