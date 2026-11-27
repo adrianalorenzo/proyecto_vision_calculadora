@@ -24,7 +24,10 @@ fonts_folder = "../assets/fonts"
 panel = (62, 34, 16)                     # dark navy blue panels
 accent = (255, 136, 48)                  # blue: buttons, borders, player 1
 sky = (252, 214, 140)                    # light blue: titles, strokes
-amber = (40, 190, 255)                   # amber: results, player 2
+amber = (40, 190, 255)                   # amber: results
+yellow = (36, 191, 251)                  # yellow: strokes of Calculator and Mental Math
+player1 = (182, 114, 244)                # pink: player 1 in Versus
+player2 = (128, 222, 74)                 # green: player 2 in Versus
 green = (94, 197, 34)
 red = (68, 68, 239)
 white = (255, 255, 255)
@@ -33,10 +36,9 @@ black = (0, 0, 0)
 
 # Other names used by main.py and the test scripts
 cyan = accent
-magenta = amber
+magenta = player1
 lime = green
-yellow = amber
-ink = sky                                # color of the strokes
+ink = yellow                             # color of the strokes
 font = cv2.FONT_HERSHEY_SIMPLEX          # for scripts that still use cv2.putText
 
 # Text shown for every card
@@ -68,12 +70,15 @@ calculator_buttons = [make_button("equals", "=", (170, 400, 310, 448)),
                       make_button("clear", "Clear", (330, 400, 470, 448), muted),
                       menu_button]
 
-mental_math_buttons = [make_button("submit", "Submit", (110, 400, 300, 448)),
-                       make_button("not_what_i_wrote", "Not what I wrote", (320, 400, 530, 448), muted),
+mental_math_buttons = [make_button("submit", "Submit", (60, 394, 220, 440)),
+                       make_button("clear", "Clear", (235, 394, 355, 440), muted),
+                       make_button("not_what_i_wrote", "Not what I wrote", (370, 394, 580, 440), muted),
                        menu_button]
 
-versus_buttons = [make_button("submit1", "Submit P1", (100, 400, 280, 448)),
-                  make_button("submit2", "Submit P2", (360, 400, 540, 448), amber),
+versus_buttons = [make_button("submit1", "Submit P1", (20, 394, 170, 440), player1),
+                  make_button("clear1", "Clear", (180, 394, 290, 440), player1),
+                  make_button("clear2", "Clear", (350, 394, 460, 440), player2),
+                  make_button("submit2", "Submit P2", (470, 394, 620, 440), player2),
                   menu_button]
 
 results_buttons = [make_button("back", "Back to menu", (220, 400, 420, 448))]
@@ -319,7 +324,7 @@ def draw_fps(screen: np.array, fps: float):
 
 
 def draw_cursor(screen: np.array, pen, gesture):
-    # Fingertip with a short fading trail. Light blue = writing, amber ring = pinch (click), white = moving
+    # Fingertip with a short fading trail. Yellow = writing, amber ring = pinch (click), white = moving
     now = time.time()
     if pen is not None:
         trail.append((pen[0], pen[1], now))
@@ -327,7 +332,7 @@ def draw_cursor(screen: np.array, pen, gesture):
         trail.pop(0)
     if pen is None:
         return
-    color = {"index": sky, "pinch": amber}.get(gesture, white)
+    color = {"index": yellow, "pinch": amber}.get(gesture, white)
     for x, y, t in trail[:-1]:
         r = max(1, int(5 * (1 - (now - t) / 0.3)))
         draw_circle(screen, (x, y), r, color, -1)
@@ -475,17 +480,17 @@ def draw_mental_math(screen: np.array, canvas: np.array, problem_text: str, time
 def draw_versus(screen: np.array, canvas: np.array, problem_text: str, points: list, target: int,
                 feedback: str, pen=None, hold=None):
     draw_header(screen, "Versus")
-    # Scoreboard: player 1 blue, player 2 amber
+    # Scoreboard: player 1 pink, player 2 green
     draw_panel(screen, (222, 12, 418, 46), panel, 0.8, 17)
-    draw_text(screen, f"P1  {points[0]}", (240, 29), 17, sky, "bold")
+    draw_text(screen, f"P1  {points[0]}", (240, 29), 17, player1, "bold")
     draw_text_centered(screen, f"to {target}", (320, 29), 10, muted)
-    draw_text(screen, f"{points[1]}  P2", (352, 29), 17, amber, "bold")
+    draw_text(screen, f"{points[1]}  P2", (352, 29), 17, player2, "bold")
 
     draw_problem(screen, problem_text)
     draw_boxes(screen, versus_boxes, {"answer1": "Player 1", "answer2": "Player 2"},
-               {"answer1": accent, "answer2": amber})
-    draw_strokes(screen, canvas, sky, versus_boxes["answer1"])
-    draw_strokes(screen, canvas, amber, versus_boxes["answer2"])
+               {"answer1": player1, "answer2": player2})
+    draw_strokes(screen, canvas, player1, versus_boxes["answer1"])
+    draw_strokes(screen, canvas, player2, versus_boxes["answer2"])
     if feedback:
         draw_chip(screen, feedback, (width / 2, 362), accent)
     draw_buttons(screen, versus_buttons, pen, hold)

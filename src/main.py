@@ -279,6 +279,8 @@ while True:
                 ui.flash(ui.lime if correct else ui.red)
                 problem_text, solution = new_problem(level)
                 clear_box(canvas, rect)
+            elif pressed == "clear":
+                clear_box(canvas, rect)
             elif pressed == "not_what_i_wrote" and history:
                 # The last answer was misread: undo it and repeat the same problem
                 last = history.pop()
@@ -298,6 +300,10 @@ while True:
                 canvas[:] = 0
 
         elif state == "VERSUS":
+            if pressed == "clear1":
+                clear_box(canvas, ui.versus_boxes["answer1"])
+            elif pressed == "clear2":
+                clear_box(canvas, ui.versus_boxes["answer2"])
             for player, button, box_name in [(0, "submit1", "answer1"), (1, "submit2", "answer2")]:
                 if pressed != button:
                     continue
@@ -309,7 +315,7 @@ while True:
                     problem_text, solution = new_problem("easy")
                     canvas[:] = 0
                     sounds.play("point")
-                    ui.flash(ui.cyan if player == 0 else ui.magenta)
+                    ui.flash(ui.player1 if player == 0 else ui.player2)
                 else:
                     feedback = f"Player {player + 1}: wrong ({answer})"
                     clear_box(canvas, rect)
