@@ -12,3 +12,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Test crops saved by test_digits.py
+output/digits_tests/
