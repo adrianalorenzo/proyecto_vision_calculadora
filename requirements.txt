@@ -3,3 +3,5 @@ numpy
 mediapipe
 scikit-learn
 matplotlib
+pillow
+pygame
