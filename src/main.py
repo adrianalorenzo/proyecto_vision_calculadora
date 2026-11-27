@@ -4,11 +4,12 @@ import random
 import cv2
 import numpy as np
 import security
+import sounds
 import ui
 
 # ---------------------------------------------------------------
 # AirMath main program: camera -> undistort -> security -> menu -> modes
-#   q: quit | r: start / stop recording the video
+#   q: quit | f: full screen on/off | m: music on/off | r: start / stop recording the video
 # ---------------------------------------------------------------
 
 camera_index = 0
@@ -17,6 +18,7 @@ mental_math_time = 120          # [s] duration of a Mental Math game
 versus_target = 5               # points to win a Versus game
 clear_after = 4.0               # [s] the Calculator result is erased after this time
 stroke_thickness = 12           # strokes are drawn white with this thickness on the canvas
+hold_time = 0.5                 # [s] the pinch must be held this time over a button to press it
 
 # ---------------- Modules of Adriana and Sofia ----------------
 # While a module does not exist yet, a simple stand-in is used so main.py always runs.
@@ -51,11 +53,11 @@ except ImportError:
 
 
 # ---------------- Mouse as pen (only when there is no tracker) ----------------
-mouse = {"pos": None, "down": False}
+mouse = {"pos": None, "down": False, "pad": 0}
 
 
 def on_mouse(event, x, y, flags, param):
-    mouse["pos"] = (x, y)
+    mouse["pos"] = ui.screen_to_image((x, y), mouse["pad"])     # screen pixels -> 640x480
     if event == cv2.EVENT_LBUTTONDOWN:
         mouse["down"] = True
     elif event == cv2.EVENT_LBUTTONUP:
@@ -126,7 +128,8 @@ if not cap.isOpened():
     exit()
 
 window = "AirMath"
-cv2.namedWindow(window)
+cv2.namedWindow(window, cv2.WINDOW_NORMAL)             # resizable window, scaled image
+cv2.setWindowProperty(window, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 if use_mouse:
     cv2.setMouseCallback(window, on_mouse)
 
@@ -134,6 +137,7 @@ state = "LOCKED"
 decoder = security.new_decoder_state()
 canvas = np.zeros((ui.height, ui.width), dtype=np.uint8)   # strokes: white (255) on black (0)
 prev_pen, prev_gesture = None, None
+hold_name, hold_start, hold_done = None, 0.0, False    # button being pressed with the pinch
 prev_time, fps = time.time(), 0.0
 writer = None
 
@@ -144,7 +148,7 @@ history, end_time, hits, misses, feedback = [], 0.0, 0, 0, ""
 points = [0, 0]
 results_title, results_lines = "", []
 
-print("q: quit | r: record")
+print("q: quit | f: full screen | m: music | r: record")
 
 while True:
     ret, frame = cap.read()
@@ -160,11 +164,29 @@ while True:
 
     # 2. LOCKED: security block on the non-mirrored frame
     if state == "LOCKED":
+        screen = ui.new_frame(display, 0.8)
+        n_before, fails_before, locked_before = len(decoder["entered"]), decoder["fails"], decoder["locked_until"]
         cards = security.detect_cards(frame, templates)
         decoder = security.update_decoder(decoder, cards[0][0] if cards else None)
-        ui.draw_locked_screen(display, decoder, mirror_corners(cards), len(security.password), now)
+        ui.draw_locked_screen(screen, decoder, mirror_corners(cards), len(security.password), now)
+
+        # Sounds and flashes of the security block
         if decoder["unlocked"]:
             state = "MENU"
+            sounds.play("unlock")
+            ui.flash(ui.lime)
+            sounds.start_music()
+        elif decoder["locked_until"] != locked_before:
+            sounds.play("locked")
+            ui.flash(ui.red)
+        elif decoder["fails"] != fails_before:
+            sounds.play("error")
+            ui.flash(ui.red)
+        elif len(decoder["entered"]) > n_before:
+            sounds.play("card_ok")
+            ui.flash(ui.cyan)
+        elif len(decoder["entered"]) < n_before:
+            sounds.play("reset")
 
     else:
         buttons, boxes = screen_elements(state)
@@ -189,10 +211,16 @@ while True:
             p2 = (int(pen[0]), int(pen[1]))
             cv2.line(canvas, p1, p2, 255, stroke_thickness)
 
-        # 5. Click: the pinch gesture starts over a button
-        pressed = None
-        if gesture == "pinch" and prev_gesture != "pinch":
-            pressed = ui.get_button(pen, buttons)
+        # 5. Click: the pinch is held over a button for hold_time (the button fills up)
+        pressed, hold = None, None
+        over = ui.get_button(pen, buttons) if gesture == "pinch" else None
+        if over != hold_name:
+            hold_name, hold_start, hold_done = over, now, False
+        if hold_name is not None and not hold_done:
+            hold = (hold_name, (now - hold_start) / hold_time)
+            if hold[1] >= 1:
+                pressed, hold_done = hold_name, True
+                sounds.play("click")
 
         # 6. State machine
         if pressed == "menu" or pressed == "back":
@@ -225,6 +253,12 @@ while True:
                 read_text = f"{num1} {op} {num2}"
                 result_text = str(evaluate(read_text))
                 result_time = now
+                if "?" in read_text or result_text in ("?", "Error"):
+                    sounds.play("error")
+                    ui.flash(ui.red)
+                else:
+                    sounds.play("correct")
+                    ui.flash(ui.yellow)
             elif pressed == "clear":
                 canvas[:] = 0
                 read_text, result_text = "", ""
@@ -241,6 +275,8 @@ while True:
                                 "correct": correct, "time": now})
                 hits, misses = hits + correct, misses + (not correct)
                 feedback = "Correct!" if correct else f"Wrong: it was {solution} (read {answer})"
+                sounds.play("correct" if correct else "error")
+                ui.flash(ui.lime if correct else ui.red)
                 problem_text, solution = new_problem(level)
                 clear_box(canvas, rect)
             elif pressed == "not_what_i_wrote" and history:
@@ -256,6 +292,9 @@ while True:
                 results_lines = compute_stats(history, level)
                 if save_record(history, level):
                     results_lines.append("New record!")
+                    sounds.play("record")
+                else:
+                    sounds.play("game_over")
                 canvas[:] = 0
 
         elif state == "VERSUS":
@@ -269,48 +308,62 @@ while True:
                     feedback = f"Point for Player {player + 1}!"
                     problem_text, solution = new_problem("easy")
                     canvas[:] = 0
+                    sounds.play("point")
+                    ui.flash(ui.cyan if player == 0 else ui.magenta)
                 else:
                     feedback = f"Player {player + 1}: wrong ({answer})"
                     clear_box(canvas, rect)
+                    sounds.play("error")
+                    ui.flash(ui.red)
             if max(points) >= versus_target:
                 state = "RESULTS"
                 winner = 1 if points[0] > points[1] else 2
                 results_title = "Versus - results"
                 results_lines = [f"Player {winner} wins!", f"P1 {points[0]} - {points[1]} P2"]
                 canvas[:] = 0
+                sounds.play("record")
 
         # 7. Draw the current screen
+        screen = ui.new_frame(display)
         if state == "MENU":
-            ui.draw_menu(display, pen)
+            ui.draw_menu(screen, pen, hold)
         elif state == "CALCULATOR":
-            ui.draw_calculator(display, canvas, read_text, result_text, pen)
+            ui.draw_calculator(screen, canvas, read_text, result_text, pen, hold)
         elif state == "MENTAL_MATH":
-            ui.draw_mental_math(display, canvas, problem_text, max(end_time - now, 0), hits, misses, feedback, pen)
+            ui.draw_mental_math(screen, canvas, problem_text, max(end_time - now, 0), hits, misses, feedback, pen, hold)
         elif state == "VERSUS":
-            ui.draw_versus(display, canvas, problem_text, points, versus_target, feedback, pen)
+            ui.draw_versus(screen, canvas, problem_text, points, versus_target, feedback, pen, hold)
         elif state == "RESULTS":
-            ui.draw_results(display, results_title, results_lines, pen)
-        ui.draw_hand_box(display, bbox)
-        ui.draw_cursor(display, pen, gesture)
+            ui.draw_results(screen, results_title, results_lines, pen, hold)
+        ui.draw_hand_box(screen, bbox)
+        ui.draw_cursor(screen, pen, gesture)
         prev_pen, prev_gesture = pen, gesture
 
-    # 8. FPS, recording and window
+    # 8. FPS, glow, recording and window
     fps = 0.9 * fps + 0.1 * (1.0 / max(now - prev_time, 1e-6))
     prev_time = now
-    ui.draw_fps(display, fps)
+    ui.draw_fps(screen, fps)
+    ui.finish_frame(screen)
     if writer is not None:
-        writer.write(display)
-        ui.draw_recording(display)
-    cv2.imshow(window, display)
+        writer.write(screen)
+        ui.draw_recording(screen)
+    shown, mouse["pad"] = ui.fit_to_window(screen, window)
+    cv2.imshow(window, shown)
 
     key = cv2.waitKey(1) & 0xFF
     if key == ord("q"):
         break
+    elif key == ord("f"):
+        # Toggle full screen (the image is scaled to the screen)
+        full = cv2.getWindowProperty(window, cv2.WND_PROP_FULLSCREEN) == cv2.WINDOW_FULLSCREEN
+        cv2.setWindowProperty(window, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL if full else cv2.WINDOW_FULLSCREEN)
+    elif key == ord("m"):
+        sounds.toggle_music()
     elif key == ord("r"):
         if writer is None:
             os.makedirs("../output", exist_ok=True)
             path = f"../output/airmath_{int(now)}.avi"
-            writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"XVID"), 20, (ui.width, ui.height))
+            writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"XVID"), 20, (screen.shape[1], screen.shape[0]))
             print("Recording:", path)
         else:
             writer.release()

@@ -40,12 +40,13 @@ while True:
     fps = 0.9 * fps + 0.1 * (1.0 / max(now - prev_time, 1e-6))
     prev_time = now
 
-    display = frame.copy()
-    ui.draw_locked_screen(display, state, cards, len(security.password), now)
+    screen = ui.new_frame(frame, 0.8)            # here without mirror, as the cards are read
+    ui.draw_locked_screen(screen, state, cards, len(security.password), now)
     if state["unlocked"]:
-        ui.draw_text_centered(display, "UNLOCKED!", (ui.width / 2, ui.height / 2), 2.0, ui.green, 4)
-    ui.draw_fps(display, fps)
-    cv2.imshow("Test security", display)
+        ui.draw_text_centered(screen, "UNLOCKED!", (ui.width / 2, ui.height / 2), 48, ui.lime, "title", neon=True)
+    ui.draw_fps(screen, fps)
+    ui.finish_frame(screen)
+    cv2.imshow("Test security", screen)
 
     key = cv2.waitKey(1) & 0xFF
     if key == ord("r"):
