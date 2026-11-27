@@ -16,11 +16,24 @@ stable_gesture = [None,None]
 kalman_started = [False, False]
 
 def create_hands():
+    """
+    Creates the MediaPipe Hands detector (up to two hands, for Versus).
+
+    Returns:
+        The mp.solutions.hands.Hands object used by get_all_landmarks and get_landmarks.
+    """
     hands = mp.solutions.hands.Hands(max_num_hands=2,min_detection_confidence=0.7,min_tracking_confidence=0.5)
     return hands
 
 def create_kalman():
-    #Same as Lab 5: state (x,y,vx, vy), measurement (x,y), constante velocity
+    """
+    Kalman filter for the index fingertip (same as Lab 5).
+
+    State (x, y, vx, vy) with a constant velocity model; measurement (x, y).
+
+    Returns:
+        The configured cv2.KalmanFilter.
+    """
     kf = cv2.KalmanFilter(4,2)
     kf.measurementMatrix = np.array([[1, 0, 0, 0],
                                      [0, 1, 0, 0]], np.float32)

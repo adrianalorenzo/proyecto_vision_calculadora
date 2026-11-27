@@ -26,11 +26,15 @@ proyecto_vision_calculadora/
 │   ├── security.py            # card detector + password decoder
 │   ├── capture_templates.py   # captures the template of every card
 │   ├── test_security.py       # live test of the security system
+│   ├── tracker.py             # MediaPipe hands, gestures (index, fist, pinch), Kalman pen, two hands
+│   ├── test_tracker.py        # live test: lost frames, FPS, jitter with and without Kalman
+│   ├── color_tracker.py       # classic tracker: fluorescent marker by HSV thresholding
+│   ├── test_two_hands.py      # quick test of two hands (Versus)
 │   ├── digits.ipynb           # trains and evaluates the SVM (and k-NN) with MNIST + own strokes
 │   ├── digits.py              # reads numbers (SVM) and operators (rules) from the canvas
 │   ├── test_digits.py         # mouse test of digits.py, saves the crops
 │   ├── capture_strokes.py     # records own digit strokes to retrain the SVM
-│   ├── modes.py               # logic of the modes (Calculator, Mental Math)
+│   ├── modes.py               # logic of the modes (Calculator, Mental Math, Versus)
 │   ├── ui.py                  # all the screens drawn with OpenCV
 │   ├── test_ui.py             # screens with fake data
 │   └── main.py                # the whole application
