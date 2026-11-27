@@ -148,7 +148,7 @@ history, end_time, hits, misses, feedback = [], 0.0, 0, 0, ""
 points = [0, 0]
 results_title, results_lines = "", []
 
-print("q: quit | f: full screen | m: music | r: record")
+print("q: quit | f: full screen | m: music | r: record | u: unlock without cards")
 
 while True:
     ret, frame = cap.read()
@@ -359,6 +359,8 @@ while True:
         cv2.setWindowProperty(window, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL if full else cv2.WINDOW_FULLSCREEN)
     elif key == ord("m"):
         sounds.toggle_music()
+    elif key == ord("u") and state == "LOCKED":
+        decoder["unlocked"] = True              # unlock without cards (only for testing)
     elif key == ord("r"):
         if writer is None:
             os.makedirs("../output", exist_ok=True)

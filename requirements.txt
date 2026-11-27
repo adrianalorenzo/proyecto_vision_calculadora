@@ -1,6 +1,7 @@
 opencv-python==4.8.1.78
-numpy
-mediapipe
+opencv-contrib-python==4.8.1.78
+numpy<2
+mediapipe==0.10.21
 scikit-learn
 matplotlib
 pillow

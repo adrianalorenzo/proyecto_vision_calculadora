@@ -43,7 +43,7 @@ while True:
     screen = ui.new_frame(frame, 0.8)            # here without mirror, as the cards are read
     ui.draw_locked_screen(screen, state, cards, len(security.password), now)
     if state["unlocked"]:
-        ui.draw_text_centered(screen, "UNLOCKED!", (ui.width / 2, ui.height / 2), 48, ui.lime, "title", neon=True)
+        ui.draw_text_centered(screen, "UNLOCKED!", (ui.width / 2, ui.height / 2), 48, ui.lime, "bold")
     ui.draw_fps(screen, fps)
     ui.finish_frame(screen)
     cv2.imshow("Test security", screen)

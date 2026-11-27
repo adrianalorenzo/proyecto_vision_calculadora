@@ -15,3 +15,6 @@ desktop.ini
 
 # Test crops saved by test_digits.py
 output/digits_tests/
+
+# Mental Math records (local to each laptop)
+data/records.txt
