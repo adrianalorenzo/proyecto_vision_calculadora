@@ -19,6 +19,8 @@ versus_target = 5               # points to win a Versus game
 clear_after = 4.0               # [s] the Calculator result is erased after this time
 stroke_thickness = 12           # strokes are drawn white with this thickness on the canvas
 hold_time = 0.5                 # [s] the pinch must be held this time over a button to press it
+press_cooldown = 1.0            # [s] after a press, no other press (the pinch can flicker for a frame)
+stroke_delay = 4                # segments kept on hold: if the hand closes, they are thrown away (no tails)
 test_folder = "../output/air_tests"   # every box read is saved here (crop + log.csv) to tune digits.py
 
 # ---------------- Modules of Adriana and Sofia ----------------
@@ -149,6 +151,8 @@ decoder = security.new_decoder_state()
 canvas = np.zeros((ui.height, ui.width), dtype=np.uint8)   # strokes: white (255) on black (0)
 prev_pen, prev_gesture = None, None
 hold_name, hold_start, hold_done = None, 0.0, False    # button being pressed with the pinch
+last_press = 0.0
+pending = []                                            # last segments of the stroke, not yet in the canvas
 prev_time, fps = time.time(), 0.0
 writer = None
 
@@ -215,12 +219,20 @@ while True:
                 gesture = tracker.get_gesture(landmarks)
                 bbox = tracker.get_bbox(landmarks)
 
-        # 4. Writing: only with the index gesture and inside a box
+        # 4. Writing: only with the index gesture and inside a box.
+        # The gesture changes some frames after the hand closes, so the last segments are kept
+        # on hold (pending) and thrown away if the index stops: this removes the tails of the strokes
         box = ui.get_box(pen, boxes)
         if gesture == "index" and prev_gesture == "index" and box is not None and box == ui.get_box(prev_pen, boxes):
-            p1 = (int(prev_pen[0]), int(prev_pen[1]))
-            p2 = (int(pen[0]), int(pen[1]))
-            cv2.line(canvas, p1, p2, 255, stroke_thickness)
+            pending.append(((int(prev_pen[0]), int(prev_pen[1])), (int(pen[0]), int(pen[1]))))
+            if len(pending) > (0 if use_mouse else stroke_delay):     # the mouse has no tails
+                p1, p2 = pending.pop(0)
+                cv2.line(canvas, p1, p2, 255, stroke_thickness)
+        elif gesture != "index":
+            pending.clear()
+        shown_canvas = canvas.copy()                     # what is drawn on the screen (with the pending segments)
+        for p1, p2 in pending:
+            cv2.line(shown_canvas, p1, p2, 255, stroke_thickness)
 
         # 5. Click: the pinch is held over a button for hold_time (the button fills up)
         pressed, hold = None, None
@@ -229,8 +241,8 @@ while True:
             hold_name, hold_start, hold_done = over, now, False
         if hold_name is not None and not hold_done:
             hold = (hold_name, (now - hold_start) / hold_time)
-            if hold[1] >= 1:
-                pressed, hold_done = hold_name, True
+            if hold[1] >= 1 and now - last_press > press_cooldown:
+                pressed, hold_done, last_press = hold_name, True, now
                 sounds.play("click")
 
         # 6. State machine
@@ -348,11 +360,11 @@ while True:
         if state == "MENU":
             ui.draw_menu(screen, pen, hold)
         elif state == "CALCULATOR":
-            ui.draw_calculator(screen, canvas, read_text, result_text, pen, hold)
+            ui.draw_calculator(screen, shown_canvas, read_text, result_text, pen, hold)
         elif state == "MENTAL_MATH":
-            ui.draw_mental_math(screen, canvas, problem_text, max(end_time - now, 0), hits, misses, feedback, pen, hold)
+            ui.draw_mental_math(screen, shown_canvas, problem_text, max(end_time - now, 0), hits, misses, feedback, pen, hold)
         elif state == "VERSUS":
-            ui.draw_versus(screen, canvas, problem_text, points, versus_target, feedback, pen, hold)
+            ui.draw_versus(screen, shown_canvas, problem_text, points, versus_target, feedback, pen, hold)
         elif state == "RESULTS":
             ui.draw_results(screen, results_title, results_lines, pen, hold)
         ui.draw_hand_box(screen, bbox)
