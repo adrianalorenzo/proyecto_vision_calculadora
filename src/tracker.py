@@ -10,13 +10,13 @@ reset_distance = 100 #[px] if the fingertip jumps more than this, the Kalman res
 use_kalman = True #False to compare without filter
 width, height =640, 480
 
-#memory bewtween frames (instead of a class)
-last_gestures = []
-stable_gesture = None
-kalman_started = False 
+#memory bewtween frames (instead of a class), one per player (0 = Player 1, 1 = Player 2)
+last_gestures = [[],[]]
+stable_gesture = [None,None]
+kalman_started = [False, False]
 
 def create_hands():
-    hands = mp.solutions.hands.Hands(max_num_hands=1,min_detection_confidence=0.7,min_tracking_confidence=0.5)
+    hands = mp.solutions.hands.Hands(max_num_hands=2,min_detection_confidence=0.7,min_tracking_confidence=0.5)
     return hands
 
 def create_kalman():
@@ -32,28 +32,41 @@ def create_kalman():
     kf.measurementNoiseCov = np.eye(2, dtype=np.float32) * 1
     return kf
 
+def get_all_landmarks(frame, hands):
+    """
+    Detects up to two hands and returns their landmarks in pixels.
+
+    Args:
+        frame: mirrored BGR image (640x480).
+        hands: object returned by create_hands().
+
+    Returns:
+        List with one list of 21 (x, y) points per hand (0, 1 or 2 hands),
+        sorted from left to right by the x of the wrist.
+    """
+    h, w = frame.shape[:2]
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)     #MediaPipe works in RGB
+    results = hands.process(rgb)
+    if not results.multi_hand_landmarks:
+        return []
+    all_hands = [[(int(p.x * w), int(p.y * h)) for p in hand.landmark]
+                 for hand in results.multi_hand_landmarks]
+    all_hands.sort(key=lambda lm: lm[0][0])          #left to right
+    return all_hands
+
 
 def get_landmarks(frame, hands):
     """
-    Detects the hand and returns its 21 landmarks in pixels.
-
-    Args:
-    -frame: mirrored BGR image (640x480)
-    -hands: object returned by create_hands()
+    Landmarks of ONE hand (the modes with one player). If there are two hands,
+    the biggest one is used: the one closest to the camera.
 
     Returns:
-    -List of 21 (x,y) poinys, or None if there is no hand
+        List of 21 (x, y) points, or None if there is no hand.
     """
-    h, w = frame.shape[:2]
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) #MediaPipe works in RGB
-    results = hands.process(rgb)
-    if not results.multi_hand_landmarks:
+    all_hands = get_all_landmarks(frame, hands)
+    if not all_hands:
         return None
-    hand = results.multi_hand_landmarks[0]
-    #MediaPipe gives voordinates in [0,1]: convert to pixels
-    return [(int(p.x * w), int(p.y * h)) for p in hand.landmark]
-
-
+    return max(all_hands, key=lambda lm: distance(lm[0], lm[9]))   #hand size: wrist - middle knuckle
 def distance(p, q):
     """Euclidian distance between two(x,y) points"""
     return np.hypot(p[0]-q[0], p[1]-q[1])
@@ -106,29 +119,32 @@ def raw_gesture(landmarks):
     return None
 
 
-def get_gesture(landmarks):
+def get_gesture(landmarks, player=0):
     """
     Stable gesture: it only changes if the same gesture is seen during gesture_frames frames.
-
+    Each player has her own memory
+    Args:
+    -landmarks: the 21 points of the hand
+    -player: 0 or 1 (0 by default, fot the modes with one player)
     Returns:
         "index", "fist", "pinch" or None
     """
-    global stable_gesture
-    last_gestures.append(raw_gesture(landmarks))
-    if len(last_gestures)>gesture_frames:
-        last_gestures.pop(0)
-    if len(last_gestures) == gesture_frames and all(g == last_gestures[0] for g in last_gestures):
-        stable_gesture = last_gestures[0]
-    return stable_gesture
+    last = last_gestures[player]
+    last.append(raw_gesture(landmarks))
+    if len(last)>gesture_frames:
+        last.pop(0)
+    if len(last) == gesture_frames and all(g == last[0] for g in last):
+        stable_gesture[player] = last[0]
+    return stable_gesture[player]
 
-def get_pen(landmarks, kalman):
+def get_pen(landmarks, kalman, player=0):
     """
     Position of the index fingertip (landmark 8), smoothed with the Kalman filter
 
     Returns:
         (x,y) in pixels
     """
-    global kalman_started
+    
     x,y = landmarks[8]
     if not use_kalman:
         return (x,y)
@@ -136,10 +152,10 @@ def get_pen(landmarks, kalman):
     measurement = np.array([[x], [y]], np.float32)
     jump = distance((x,y), (kalman.statePost[0,0], kalman.statePost[1,0]))
     #first time, or the hand reappeared far away: start the filter at the fingertip
-    if not kalman_started or jump>reset_distance:
+    if not kalman_started[player] or jump>reset_distance:
         kalman.statePost = np.array([[x], [y], [0], [0]], np.float32)
         kalman.errorCovPost = np.eye(4, dtype=np.float32)
-        kalman_started = True
+        kalman_started[player] = True
 
     kalman.predict()
     kalman.correct(measurement)
