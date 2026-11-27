@@ -227,6 +227,13 @@ while True:
             if landmarks is not None:
                 pointers.append((0, tracker.get_pen(landmarks, kalmans[0]), tracker.get_gesture(landmarks),
                                  tracker.get_bbox(landmarks)))
+        # Hand lost for a few frames: the Kalman predicts the fingertip (tracker.predict_pen)
+        if not use_mouse:
+            for player in ((0, 1) if state == "VERSUS" else (0,)):
+                if not any(p[0] == player for p in pointers):
+                    pen = tracker.predict_pen(kalmans[player], player)
+                    if pen is not None:
+                        pointers.append((player, pen, prev_gesture[player], None))
 
         pressed, hold = None, {}
         for player, pen, gesture, bbox in pointers:

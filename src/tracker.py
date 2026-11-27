@@ -9,11 +9,13 @@ bbox_margin = 20 #[px] margin of the bounding box
 reset_distance = 100 #[px] if the fingertip jumps more than this, the Kalman restarts
 use_kalman = True #False to compare without filter
 width, height =640, 480
+max_lost_frames = 5 #[frames] without hand, the pen is predicted by the Kalman at most this many frames
 
 #memory bewtween frames (instead of a class), one per player (0 = Player 1, 1 = Player 2)
 last_gestures = [[],[]]
 stable_gesture = [None,None]
 kalman_started = [False, False]
+lost_frames = [0, 0]
 
 def create_hands():
     """
@@ -170,6 +172,29 @@ def get_pen(landmarks, kalman, player=0):
         kalman.errorCovPost = np.eye(4, dtype=np.float32)
         kalman_started[player] = True
 
+    lost_frames[player] = 0
     kalman.predict()
     kalman.correct(measurement)
     return (int(kalman.statePost[0,0]), int(kalman.statePost[1,0]))
+
+def predict_pen(kalman, player=0):
+    """
+    Position of the fingertip when MediaPipe loses the hand for a few frames.
+
+    Only the prediction step of the Kalman filter is done (there is no measurement):
+    the pen keeps moving with the last estimated velocity.
+
+    Args:
+        kalman: the Kalman filter of this player.
+        player: 0 or 1 (0 by default, for the modes with one player).
+
+    Returns:
+        (x, y) in pixels, or None if the filter has not started or the hand
+        has been lost for more than max_lost_frames frames.
+    """
+    if not use_kalman or not kalman_started[player] or lost_frames[player] >= max_lost_frames:
+        kalman_started[player] = False      #the next detection restarts the filter at the fingertip
+        return None
+    lost_frames[player] += 1
+    kalman.predict()                        #OpenCV also copies the prediction to statePost
+    return (int(kalman.statePost[0, 0]), int(kalman.statePost[1, 0]))
