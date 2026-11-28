@@ -30,17 +30,8 @@ min_digit_pixels = 250
 # Two pieces are the same digit if they overlap horizontally at least this fraction of the narrower one.
 # Example: a 5 whose top bar does not touch the rest.
 join_overlap = 0.5
-
-# A digit wider than this times its height is two digits that touch (e.g. "32" written in one go).
-# In the air tests the widest single digit was 1.20 (a 2 with a long base) and two touching digits 1.33-1.45.
-split_ratio = 1.3
-# ...and only if it has enough white pixels for two digits: a small wide piece (a tail of a stroke,
-# about 550 pixels) is not split. The touching "32" and "38" of the tests had about 5000-6000.
-min_split_pixels = 1500
-# ...and only if there is a "valley" between them: the column with the least ink (in the middle half)
-# must have less than this fraction of the ink of a typical column (the median).
-# Touching "32" 0.21 and "38" 0.56; a wide "2" (1.43 times wider than tall) 0.87, as its base crosses it all.
-valley_ratio = 0.7
+# Two digits that touch are read as one. Splitting them by the column with the least ink was tried, but
+# it also split a 7 with a long bar ("87"), so the user is asked to leave a gap between digits instead.
 
 # In an operator, pieces smaller than this fraction of the biggest one are specks and are ignored.
 speck_ratio = 0.2
@@ -117,34 +108,6 @@ def join_digits(stats: np.ndarray, pieces: list) -> list:
                 continue
         digits.append({"x1": x1, "x2": x2, "pieces": [i]})
     return [d["pieces"] for d in digits]
-
-
-def split_touching(digit: np.ndarray) -> list:
-    """
-    Splits an image in two if it is too wide to be one digit (two digits that touch each other).
-
-    The cut is made at the column with the least white pixels, looking only in the middle half of the
-    digit: that is where two touching digits are joined by a thin bit of stroke.
-
-    Args:
-        digit: image (uint8) with the pieces of one digit in white (255) on black (0).
-
-    Returns:
-        List with one image (the same one, if it is not too wide) or two images (left and right part).
-    """
-    x, y, w, h = cv2.boundingRect(cv2.findNonZero(digit))
-    if w <= split_ratio * h or np.count_nonzero(digit) < min_split_pixels:
-        return [digit]
-
-    ink = np.count_nonzero(digit[:, x:x+w], axis=0)       # white pixels of every column
-    middle = ink[w // 4: 3 * w // 4]
-    if middle.min() >= valley_ratio * np.median(ink):      # no thin joint: one wide digit (e.g. a 2)
-        return [digit]
-    cut = x + w // 4 + int(np.argmin(middle))
-    left, right = digit.copy(), digit.copy()
-    left[:, cut:] = 0
-    right[:, :cut] = 0
-    return [left, right]
 
 
 def to_mnist(digit: np.ndarray) -> np.ndarray:
@@ -231,11 +194,8 @@ def predict_number(crop: np.ndarray) -> str:
     if svm is None or not pieces:
         return "?"
 
-    # One image per digit (with all its pieces), converted to MNIST, and all of them predicted at once.
-    # A piece that is too wide is two touching digits, so it is split in two first.
-    digit_images = []
-    for d in join_digits(stats, pieces):
-        digit_images += split_touching(np.isin(labels, d).astype(np.uint8) * 255)
+    # One image per digit (with all its pieces), converted to MNIST, and all of them predicted at once
+    digit_images = [np.isin(labels, d).astype(np.uint8) * 255 for d in join_digits(stats, pieces)]
     samples = np.vstack([to_mnist(img) for img in digit_images])     # one row per digit
     _, predictions = svm.predict(samples)                            # one predicted digit per row
 
