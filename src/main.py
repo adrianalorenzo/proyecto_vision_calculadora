@@ -21,7 +21,8 @@ stroke_thickness = 12           # strokes are drawn white with this thickness on
 hold_time = 0.5                 # [s] the pinch must be held this time over a button to press it
 press_cooldown = 1.0            # [s] after a press, no other press (the pinch can flicker for a frame)
 stroke_delay = 4                # segments kept on hold: if the hand closes, they are thrown away (no tails)
-test_folder = "../output/air_tests"   # every box read is saved here (crop + log.csv) to tune digits.py
+test_folder = "../output/air_tests"   # every box read is saved here (crop + log) to tune digits.py
+log_name = "log_" + time.strftime("%Y%m%d_%H%M%S") + ".csv"   # one log per run (no git conflicts between us)
 
 # ---------------- Modules of Adriana and Sofia ----------------
 # While a module does not exist yet, a simple stand-in is used so main.py always runs.
@@ -105,12 +106,12 @@ def clear_box(canvas: np.array, rect: tuple):
 
 
 def save_test(mode: str, crops: dict, read: str, expected=""):
-    # Saves the crops of the boxes that were read and one line in log.csv: time, mode, expected, read
+    # Saves the crops of the boxes that were read and one line in the log of this run: time, mode, expected, read
     os.makedirs(test_folder, exist_ok=True)
     stamp = time.strftime("%H%M%S") + f"_{int(time.time() * 1000) % 1000:03d}"
     for name, crop in crops.items():
         cv2.imwrite(os.path.join(test_folder, f"{stamp}_{mode}_{name}.png"), crop)
-    with open(os.path.join(test_folder, "log.csv"), "a") as f:
+    with open(os.path.join(test_folder, log_name), "a") as f:
         f.write(f"{stamp},{mode},{expected},{read}\n")
 
 
